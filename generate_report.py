@@ -68,7 +68,7 @@ def generate_docx():
     meta_table.autofit = False
     
     headers = [
-        ("Candidate Solution", "Production ML Pipeline"),
+        ("Solution", "ML Pipeline (train_predict.py)"),
         ("Validation Framework", "Out-of-Time (OOT) Split"),
         ("Target Variable", "posted_rate ($)")
     ]
@@ -127,11 +127,12 @@ def generate_docx():
     # 1. Executive Summary
     add_heading("1. Executive Summary", 1)
     add_p(
-        "This report outlines the end-to-end machine learning solution designed to predict freight load posted rates (`posted_rate`) "
-        "across dynamic national trucking corridors. Using 48,000 historical freight loads spanning January 1 to October 31, 2025, "
-        "we engineered a robust pricing model and applied it to 12,000 validation loads (November-December 2025) and a fixed 31-day December scenario. "
-        "Our solution achieves state-of-the-art accuracy with an Out-of-Time MAE of $110.94, Median Absolute Error of $35.78, "
-        "and an R² of 0.8270, validated with 0 errors via Spotter's official `score.py` harness."
+        "This report outlines the machine learning solution developed to predict freight load posted rates (`posted_rate`) "
+        "across national trucking corridors. Using 48,000 historical freight loads spanning January 1 to October 31, 2025, "
+        "we built a geospatial-temporal pipeline, validated it on an Out-of-Time holdout, and applied it to 12,000 validation loads "
+        "(November-December 2025) and a fixed 31-day December scenario. "
+        "The OOT holdout yields a MAE of approximately $129, Median Absolute Error of $56, and R² of 0.82. "
+        "Both output files pass Spotter's official `score.py` evaluation with zero errors."
     )
 
     # 2. Validation & Split Approach
@@ -157,42 +158,50 @@ def generate_docx():
     )
 
     # 3. Data Exploration & Quality Findings
-    add_heading("3. Data Exploration & Quality Remediation", 1)
-    add_p("During extensive exploratory data analysis (EDA), three key data-quality challenges were identified and systematically resolved:")
-    
+    add_heading("3. Data Exploration & Quality Findings", 1)
+    add_p("Five data-quality issues were identified during EDA:")
+
     add_p(
-        "300 loads in training (0.63%) and 165 loads in validation (1.38%) lacked payload weight. Rather than row-deletion or naive overall mean filling, "
-        "we analyzed weight distributions across equipment types. Dry Van and Flatbed payloads have distinct weight profiles. We imputed missing weights with "
-        "domain-aligned median payloads (31,000 lbs) and generated an explicit boolean indicator (`weight_isna`) to allow tree algorithms to learn any "
-        "potential reporting bias.",
-        "1. Missing Weight Values: "
+        "292 training records and 145 validation records carry a negative weight value. These are sign-flip recording errors; "
+        "the correct value is the absolute value. The fix `abs(weight)` is applied before any imputation.",
+        "1. Negative Weights: "
     )
     add_p(
-        "374 training loads (0.78%) and 249 validation loads (2.08%) lacked `market_index`. We discovered that `market_index` behaves as a daily macro-level "
-        "indicator with tight intra-day clustering (std dev ~0.024). We constructed a daily market calendar lookup from observed days to impute missing days, "
-        "defaulting to a neutral baseline of 1.0 alongside a `market_index_isna` flag.",
-        "2. Missing Macro Market Index: "
+        "0.78% of training records (373 rows: 270 with rpm > 6.0, 103 with rpm < 0.5) have implausible rate-per-mile values. "
+        "The high-rpm subset may include genuine short-haul premiums; the low-rpm subset cannot be explained by any normal freight scenario and may be "
+        "test or mis-keyed records. Both are flagged in code for future audit; the model sees their actual posted_rate targets.",
+        "2. RPM Outliers (possible corruptions): "
     )
     add_p(
-        "Validation data introduces 8 brand new pickup and delivery cities never seen in training: Laredo, Charlotte, Knoxville, Jackson, Norfolk, "
-        "Chicago, Allentown, and San Diego. Models relying solely on categorical city IDs fail completely on unseen geographies. To solve this, our pipeline "
-        "relies on precise spatial coordinates (`pickup_lat`, `pickup_lon`, `delivery_lat`, `delivery_lon`), Great-Circle Haversine distances, route tortuosity, "
-        "and coordinate deltas, enabling 100% inductive zero-shot generalization across any newly introduced market.",
-        "3. Unseen Geographic Markets in Validation: "
+        "300 training loads (0.63%) and 165 validation loads (1.38%) lacked payload weight. Missing values are imputed with a "
+        "domain-aligned median (31,000 lbs) and an explicit boolean indicator `weight_isna` is added.",
+        "3. Missing Weight Values: "
+    )
+    add_p(
+        "374 training loads (0.78%) and 249 validation loads (2.08%) lacked `market_index`. Because market index is a daily "
+        "indicator with tight intra-day variance (~0.024 std), missing days are filled via a daily calendar mean lookup. "
+        "A `market_index_isna` flag is included.",
+        "4. Missing Market Index: "
+    )
+    add_p(
+        "Validation data introduces 8 cities not present in training: Laredo, Charlotte, Knoxville, Jackson, Norfolk, Chicago, "
+        "Allentown, and San Diego. Rather than using categorical city IDs, the model uses Haversine coordinates, tortuosity, and "
+        "coordinate deltas, which generalise to any lat/lon pair.",
+        "5. Unseen Cities in Validation: "
     )
 
-    # 4. Feature Engineering Architecture
-    add_heading("4. Feature Engineering Architecture", 1)
+    # 4. Feature Engineering
+    add_heading("4. Feature Engineering", 1)
     add_p(
-        "Our pipeline creates 35 rich predictive features across four modular domains:",
-        "Multidimensional Signals: "
+        "The pipeline creates 29 predictive features across four domains. Five date-level features were deliberately excluded: "
+        "`month`, `quarter`, `dayofyear`, `sin_dayofyear`, `cos_dayofyear`. The model is trained on January-October only; "
+        "those features take values in November-December that the model never saw, so any splits it learned on them would not generalise."
     )
     add_p(
-        "• Temporal Dynamics: Day of week, day of month, month, day of year, quarter, weekend indicator (`is_weekend`), month-end surge indicator (`day >= 25`), "
-        "and continuous cyclical sinusoidal transforms (`sin_dayofweek`, `cos_dayofweek`, `sin_dayofyear`, `cos_dayofyear`).\n"
-        "• Geospatial & Routing: Haversine distance, route tortuosity ratio (`distance / haversine`), absolute latitude/longitude deltas, and corridor midpoint coordinates.\n"
-        "• Payload & Equipment: One-hot encoded equipment categories (`Dry Van`, `Flatbed`, `Reefer`), weight payload tiers (light, medium, heavy), and ton-miles payload density.\n"
-        "• Broker & Market Baselines: Baseline expected quote (`distance * quote_signal`), market-adjusted baseline (`est_base * market_index`), and quote-by-market cross-interactions."
+        "• Temporal (within-week, always in range): `day`, `dayofweek`, `is_weekend`, `is_month_end`, `sin_dayofweek`, `cos_dayofweek`.\n"
+        "• Geospatial: `pickup_lat/lon`, `delivery_lat/lon`, Haversine, tortuosity, `lat_diff`, `lon_diff`, midpoint coordinates.\n"
+        "• Payload & Equipment: `weight_filled`, `weight_isna`, `weight_tier`, `ton_miles`, `distance`, one-hot equipment flags.\n"
+        "• Market / broker signals: `quote_signal` (corr with rpm ~0.05, treated as noisy auxiliary), `est_base`, `market_index_filled`, `market_index_isna`, `market_adj_base`, `quote_x_market`."
     )
 
     # 5. Model Architecture & Benchmark Comparison
@@ -223,17 +232,34 @@ def generate_docx():
         r.font.color.rgb = RGBColor(255, 255, 255)
 
     data = [
+        ("Naive baseline (median rpm x dist)", "—", "~$684", "~$257", "~0.80"),
         ("XGBoost Direct", "L2 (MSE)", "$758.01", "$207.05", "0.7533"),
         ("XGBoost Rate Per Mile", "L2 (MSE)", "$710.44", "$186.24", "0.7833"),
         ("LightGBM Direct", "L2 (MSE)", "$656.49", "$173.61", "0.8149"),
         ("LightGBM Rate Per Mile", "L2 (MSE)", "$649.94", "$163.88", "0.8186"),
-        ("Production Tri-Ensemble (Ours)", "70% L1 RPM + 15% L2 RPM + 15% L1 Dir", "$634.67", "$110.94", "0.8270")
+        ("Tri-Ensemble (Ours)", "70% L1 RPM + 15% L2 RPM + 15% L1 Dir", "~$639", "~$129", "~0.824")
     ]
+
+    # Resize table to 7 rows (header + 6 data rows)
+    table = doc.add_table(rows=7, cols=5)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+    t_headers = ["Model & Formulation", "Loss Objective", "RMSE ($)", "MAE ($)", "R² Score"]
+    for j, h in enumerate(t_headers):
+        cell = table.cell(0, j)
+        set_cell_background(cell, "064A56")
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r = p.add_run(h)
+        r.font.name = "Segoe UI"
+        r.font.size = Pt(9)
+        r.font.bold = True
+        r.font.color.rgb = RGBColor(255, 255, 255)
 
     for i, row_data in enumerate(data):
         for j, val in enumerate(row_data):
             cell = table.cell(i + 1, j)
-            bg = "EAF2F4" if i == 4 else ("FFFFFF" if i % 2 == 0 else "F9FBFB")
+            bg = "EAF2F4" if i == 5 else ("FFFFFF" if i % 2 == 0 else "F9FBFB")
             set_cell_background(cell, bg)
             p = cell.paragraphs[0]
             if j >= 2:
@@ -241,7 +267,7 @@ def generate_docx():
             r = p.add_run(val)
             r.font.name = "Segoe UI"
             r.font.size = Pt(8.5)
-            if i == 4:
+            if i == 5:
                 r.font.bold = True
                 r.font.color.rgb = primary_color
             else:
@@ -249,22 +275,23 @@ def generate_docx():
 
     doc.add_paragraph().paragraph_format.space_after = Pt(4)
     add_p(
-        "Our final production model is a weighted Tri-Ensemble combining: (1) 70% LightGBM L1 Rate-Per-Mile Regressor, "
-        "(2) 15% LightGBM L2 Rate-Per-Mile Regressor, and (3) 15% LightGBM L1 Direct Posted Rate Regressor. This blends median outlier robustness "
-        "with expected-value calibrations, yielding an outstanding OOT MAPE of 4.73% and median error of $35.78."
+        "The Tri-Ensemble (70% L1 RPM + 15% L2 RPM + 15% L1 Direct) reduces MAE by ~$128 and Median AE by ~$83 "
+        "vs the naive baseline on the Sep-Oct holdout. OOT MAPE is approximately 5.4%."
     )
 
     # 6. Fixed December Lane Forecast
-    add_heading("6. Fixed December 2025 Forecast & Chart Validation", 1)
+    add_heading("6. Fixed December 2025 Forecast & Chart", 1)
     add_p(
-        "To evaluate model sensitivity to calendar effects under controlled conditions, Spotter provided a fixed corridor scenario: "
-        "Lexington to Fort Wayne, 360.0 miles, Dry Van equipment, 32,000 lbs payload, evaluated across every day from December 1 to December 31, 2025.",
-        "Scenario Specifications: "
+        "Scenario: Lexington to Fort Wayne, 360 miles, Dry Van, 32,000 lbs, one prediction per day across December 1-31, 2025.",
+        "Scenario: "
     )
     add_p(
-        "Below is the official validation visualization generated directly by `score.py` (`scorer_results/candidate_december.png`). "
-        "The model captures true weekly dispatch cycles: rates rise toward mid-week dispatch peaks (~$826.69 on Wednesdays/Thursdays), "
-        "soften during weekend lulls (~$808.10), and exhibit an upward surge during late-December holiday freight pushes."
+        "The chart below (Figure 1) is generated by `score.py`. The model captures the weekly day-of-week rhythm observed "
+        "throughout the training data: Mondays average ~$811, Wednesdays ~$825, weekends a few dollars lower. "
+        "This pattern repeats weekly throughout December. "
+        "There is no meaningful late-December surge: day >= 25 averages $783-$812, essentially the same as the rest of the month. "
+        "The absolute rate level (~$795) should be treated with caution; the model has no December training data, so the true "
+        "market level for this corridor in December 2025 is not reliably estimated."
     )
 
     # Insert Image
@@ -286,14 +313,24 @@ def generate_docx():
         r_cap.font.italic = True
         r_cap.font.color.rgb = secondary_color
 
-    # 7. Verification & Deliverables Summary
-    add_heading("7. Verification & Submission Deliverables", 1)
+    # 7. Limitations
+    add_heading("7. Limitations", 1)
     add_p(
-        "All candidate submission requirements have been rigorously executed, tested, and validated:\n"
-        "• `validation_predictions.csv`: 12,000 rows exactly matching `load_id,predicted_rate` schema. Zero non-positive or missing values.\n"
-        "• `december-chart-inputs.csv` & `data/december_chart_inputs.csv`: Completed with predicted rates across all 31 days.\n"
-        "• `score.py` Verification: Verified cleanly with 0 errors (`Validated 12,000 final predictions. Validated 31 fixed December predictions`).\n"
-        "• Reproducibility: Standalone `train_predict.py` retrains, evaluates, and regenerates all submission files in ~45 seconds."
+        "• December absolute rate level is uncertain. The model is trained on Jan-Oct data; whether the true Dec 2025 market level is "
+        "higher or lower than the predicted ~$795-$825 range cannot be verified without actuals.\n"
+        "• Single temporal split. A single OOT cut-point has higher variance than a rolling-origin CV. The metrics should be treated as indicative.\n"
+        "• ~0.78% corrupted labels. Records with rpm outside [0.5, 6.0] inflate RMSE and affect R². A data audit is warranted.\n"
+        "• `quote_signal` contribution is limited (corr ~0.05 with rpm); it functions as a noisy auxiliary signal.\n"
+        "• Negative weights corrected with abs(weight) assuming sign-flip errors; if some are sentinel values, the imputation may need revisiting."
+    )
+
+    # 8. Verification & Deliverables Summary
+    add_heading("8. Verification & Submission Deliverables", 1)
+    add_p(
+        "• `validation_predictions.csv`: 12,000 rows, columns `load_id,predicted_rate`, all values positive.\n"
+        "• `data/december_chart_inputs.csv`: 31 rows with `predicted_rate` filled (original input CSV never overwritten).\n"
+        "• `score.py` verification: 0 errors (`Validated 12,000 final predictions. Validated 31 fixed December predictions`).\n"
+        "• Reproducibility: `python train_predict.py` retrains and regenerates all output files from scratch."
     )
 
     docx_path = Path("Freight_Rate_ML_Assessment_Report.docx")
@@ -405,11 +442,11 @@ def generate_pdf():
     # 1. Executive Summary
     story.append(Paragraph("1. Executive Summary", h1_style))
     story.append(Paragraph(
-        "This report details the machine learning solution developed to accurately forecast freight posted rates (`posted_rate`) "
-        "across United States commercial truckload corridors. Using 48,000 historical freight loads (Jan 01 to Oct 31, 2025), "
-        "we engineered an inductive geospatial and temporal architecture and generated predictions for 12,000 validation loads "
-        "(Nov 01 to Dec 31, 2025) and a fixed December benchmark corridor. Our solution delivers an Out-of-Time MAE of <b>$110.94</b>, "
-        "Median Absolute Error of <b>$35.78</b>, and <b>R² of 0.8270</b>, passing Spotter's official <code>score.py</code> evaluation suite with zero errors.",
+        "This report details the machine learning solution developed to forecast freight posted rates (`posted_rate`) "
+        "across US truckload corridors. Using 48,000 historical freight loads (Jan 01 to Oct 31, 2025), "
+        "we built a geospatial-temporal pipeline and generated predictions for 12,000 validation loads "
+        "(Nov 01 to Dec 31, 2025) and a fixed 31-day December scenario. The OOT holdout yields MAE of ~$129, "
+        "Median AE ~$56, and R² ~0.82. Both output files pass Spotter's official <code>score.py</code> with zero errors.",
         body_style
     ))
 
@@ -431,39 +468,39 @@ def generate_pdf():
     ))
 
     # 3. Data Exploration & Quality Remediation
-    story.append(Paragraph("3. Data Exploration & Quality Remediation", h1_style))
+    story.append(Paragraph("3. Data Exploration & Quality Findings", h1_style))
     story.append(Paragraph(
-        "• <b>Missing Payload Weights:</b> 300 records in training (0.63%) and 165 records in validation (1.38%) lacked weight. "
-        "We imputed missing weights using equipment-specific medians (31,000 lbs) and included a binary indicator <code>weight_isna</code> "
-        "to ensure gradient boosted trees learn potential operational reporting patterns.<br/>"
-        "• <b>Missing Macro Market Index:</b> 374 training records (0.78%) and 249 validation records (2.08%) were missing <code>market_index</code>. "
-        "Because market index is a daily macroeconomic indicator with minimal intra-day variance (std dev ~0.024), we reconstructed missing values "
-        "via a calendar daily mean lookup, defaulting to 1.0 alongside an explicit <code>market_index_isna</code> indicator.<br/>"
-        "• <b>Unseen Geographic Markets:</b> Validation data contains 8 completely new cities not present in training: Laredo, Charlotte, "
-        "Knoxville, Jackson, Norfolk, Chicago, Allentown, and San Diego. Rather than relying on rigid city IDs, our model computes Great-Circle "
-        "Haversine distances, route tortuosity, and coordinate deltas, enabling 100% zero-shot generalization across any newly introduced market.",
+        "• <b>Negative Weights:</b> 292 train / 145 val records have negative weight — sign-flip recording errors. Fixed with <code>abs(weight)</code>.<br/>"
+        "• <b>RPM Outliers:</b> 373 training records (0.78%) have rpm outside [0.5, 6.0]. Low-rpm rows cannot be explained by any normal "
+        "freight scenario; high-rpm rows include some genuine short-haul premiums. Both flagged for audit; model sees actual targets.<br/>"
+        "• <b>Missing Weights:</b> 300 train (0.63%) / 165 val (1.38%) lack weight. Imputed with 31,000 lbs median + <code>weight_isna</code> flag.<br/>"
+        "• <b>Missing Market Index:</b> 374 train (0.78%) / 249 val (2.08%) lack <code>market_index</code>. Filled via daily calendar mean + <code>market_index_isna</code> flag.<br/>"
+        "• <b>Unseen Cities:</b> 8 new cities in validation (Laredo, Charlotte, Knoxville, Jackson, Norfolk, Chicago, Allentown, San Diego). "
+        "The model uses Haversine coordinates rather than city IDs, so it generalises to any lat/lon pair.",
         body_style
     ))
 
     # 4. Model Architecture & Benchmarks
     story.append(Paragraph("4. Model Architecture & Loss Formulation", h1_style))
     story.append(Paragraph(
-        "Freight spot rates contain positive skew and rare high-dollar surge rates. Optimizing with standard L2 (MSE) loss causes tree splitters "
-        "to over-fit extreme outliers. By reformulating the target as <b>Rate Per Mile (RPM = posted_rate / distance)</b> and utilizing "
-        "<b>L1 (MAE) loss</b>, our model directly estimates the conditional median rate, slashing median error to just $35.78.",
+        "Freight spot rates are right-skewed with ~0.78% extreme outliers. L2 (MSE) loss is pulled by those outliers. "
+        "Reformulating the target as <b>Rate Per Mile (RPM = posted_rate / distance)</b> and using <b>L1 (MAE) loss</b> "
+        "targets the conditional median, substantially reducing error. A naive baseline (median training rpm × distance) "
+        "serves as the benchmark floor.",
         body_style
     ))
 
     # Benchmark Table
     bench_data = [
         ["Model & Formulation", "Objective", "RMSE ($)", "MAE ($)", "R² Score"],
+        ["Naive baseline (median rpm x dist)", "—", "~$684", "~$257", "~0.80"],
         ["XGBoost Direct", "L2 (MSE)", "$758.01", "$207.05", "0.7533"],
         ["XGBoost Rate Per Mile", "L2 (MSE)", "$710.44", "$186.24", "0.7833"],
         ["LightGBM Direct", "L2 (MSE)", "$656.49", "$173.61", "0.8149"],
         ["LightGBM Rate Per Mile", "L2 (MSE)", "$649.94", "$163.88", "0.8186"],
-        ["Production Tri-Ensemble (Ours)", "70% L1 RPM + 15% L2 RPM + 15% L1 Dir", "$634.67", "$110.94", "0.8270"]
+        ["Tri-Ensemble (Ours)", "70% L1 RPM + 15% L2 RPM + 15% L1 Dir", "~$639", "~$129", "~0.824"]
     ]
-    t_bench = Table(bench_data, colWidths=[175, 137, 75, 75, 70])
+    t_bench = Table(bench_data, colWidths=[170, 142, 72, 72, 66])
     t_bench.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), c_primary),
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
@@ -476,9 +513,10 @@ def generate_pdf():
         ('BACKGROUND', (0,2), (-1,2), c_table_alt),
         ('BACKGROUND', (0,3), (-1,3), colors.white),
         ('BACKGROUND', (0,4), (-1,4), c_table_alt),
-        ('BACKGROUND', (0,5), (-1,5), c_table_highlight),
-        ('FONTNAME', (0,5), (-1,5), 'Helvetica-Bold'),
-        ('TEXTCOLOR', (0,5), (-1,5), c_primary),
+        ('BACKGROUND', (0,5), (-1,5), c_table_alt),
+        ('BACKGROUND', (0,6), (-1,6), c_table_highlight),
+        ('FONTNAME', (0,6), (-1,6), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (0,6), (-1,6), c_primary),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D9E2E4")),
         ('PADDING', (0,0), (-1,-1), 3.5)
     ]))
@@ -488,9 +526,10 @@ def generate_pdf():
     # 5. Fixed December Forecast
     story.append(Paragraph("5. Fixed December 2025 Forecast & Verification", h1_style))
     story.append(Paragraph(
-        "<b>Scenario:</b> Lexington to Fort Wayne | 360 miles | Dry Van | 32,000 lbs | Date varying daily across December 2025.<br/>"
-        "Figure 1 illustrates the resulting forecast produced by <code>score.py</code>. The model reproduces the weekly shipping cadence: "
-        "rates soften over weekends (~$808-$812), peak mid-week (~$826.69 on Wednesdays/Thursdays), and surge toward year-end holiday closures.",
+        "<b>Scenario:</b> Lexington to Fort Wayne | 360 miles | Dry Van | 32,000 lbs | one prediction per day, Dec 1-31, 2025.<br/>"
+        "Figure 1 is generated by <code>score.py</code>. The model captures the weekly day-of-week rhythm: Mon ~$811, Wed ~$825, weekends lower. "
+        "This pattern repeats throughout December; there is no meaningful late-December surge (day >=25 average is essentially flat vs rest of month). "
+        "The absolute rate level should be treated with caution — the model has no December training data.",
         body_style
     ))
 
@@ -498,11 +537,22 @@ def generate_pdf():
     img_path = Path("scorer_results/candidate_december.png")
     if img_path.is_file():
         story.append(RLImage(str(img_path), width=510, height=170))
-        story.append(Paragraph("Figure 1: Candidate December 2025 Predicted Load Rate Chart (Produced by score.py)", caption_style))
+        story.append(Paragraph("Figure 1: December 2025 Predicted Load Rate Chart (Produced by score.py)", caption_style))
 
     story.append(Paragraph(
-        "<b>Submission Verification:</b> Running <code>python score.py --predictions validation_predictions.csv --december-predictions data/december_chart_inputs.csv</code> "
-        "confirms 100% compliance across all 12,000 validation loads and 31 December scenario inputs.",
+        "<b>Submission Verification:</b> Running <code>python score.py --predictions validation_predictions.csv "
+        "--december-predictions data/december_chart_inputs.csv</code> "
+        "confirms 12,000 validation predictions and 31 December inputs pass with zero errors.",
+        body_style
+    ))
+
+    story.append(Paragraph("6. Limitations", h1_style))
+    story.append(Paragraph(
+        "• <b>December level uncertain:</b> The true Dec 2025 market rate cannot be verified without Dec actuals.<br/>"
+        "• <b>Single temporal split:</b> Higher variance than rolling-origin CV; metrics are indicative.<br/>"
+        "• <b>~0.78% corrupted labels:</b> Inflate RMSE and affect R²; a data audit is warranted.<br/>"
+        "• <b>quote_signal:</b> Corr with rpm ~0.05 — treated as noisy auxiliary, not a rate estimate.<br/>"
+        "• <b>Negative weights:</b> Corrected with abs(); if some are sentinel values, imputation should be revisited.",
         body_style
     ))
 
