@@ -155,8 +155,8 @@ The prediction chart below was generated directly by the provided `score.py`:
 ### 1. Environment Setup
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/freight-rate-ml-assessment.git
-cd freight-rate-ml-assessment
+git clone https://github.com/HARJAPAN2005/Spotter-Freight-Rate-Prediction-Challenge.git
+cd Spotter-Freight-Rate-Prediction-Challenge
 
 # Install dependencies
 python -m pip install -r requirements.txt
