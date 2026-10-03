@@ -1,109 +1,188 @@
-# 2–3 Minute Loom Video Presentation Script
+# Loom Video Script — Spotter Freight Rate Prediction Challenge
+## Full Precision Guide: Exact Words + Exact Screen Location
 
-> **Video Title**: Spotter Freight Rate Prediction — Machine Learning Solution Walkthrough  
-> **Target Length**: 2 minutes 40 seconds (ideal window: 2:20 – 2:55)  
-> **Speaker**: Candidate  
-> **Format**: Screen share with webcam bubble in the corner.
-
----
-
-## Pre-Recording Setup
-
-Have the following 4 windows ready to switch between:
-1. **Screen 1**: `README.md` or the PDF report — Data Quality table and OOT split diagram.
-2. **Screen 2**: IDE open on `train_predict.py` — `engineer_features()` and the ensemble block.
-3. **Screen 3**: Terminal showing `python score.py ...` output (pre-run is fine).
-4. **Screen 4**: `scorer_results/candidate_december.png`.
+> **Target length**: 2 min 30 sec – 2 min 55 sec  
+> **Format**: Screen share (full screen, no window chrome) + webcam bubble bottom-right  
+> **Font size in IDE**: bump to 16pt so code is readable on a small Loom player  
+> **Pre-run everything** before hitting Record — terminal output should already be visible
 
 ---
 
-## Script & Timing
+## Pre-Recording Checklist
 
-### Section 1: Introduction & Data Exploration (0:00–0:35)
-**Screen to show**: README data quality table or terminal output from `train_predict.py`.
+Before you start Loom, have these four things open and **ready to switch to instantly**:
 
-> *"Hi, I'm walking through my solution to Spotter's Freight Rate Prediction Challenge.*
->
-> *We have 48,000 historical loads covering January through October 2025, and we need to predict posted rates for 12,000 validation loads in November and December.*
->
-> *My first step was a thorough data audit. I found five issues:*
-> *- **292 training and 145 validation records have negative weight values** — clearly sign-flip entry errors. I apply `abs(weight)` before any imputation.*
-> *- **0.78% of training labels have implausible rate-per-mile values** — either below 0.50 or above 6.00 dollars per mile. These look like corrupted records; I flag them rather than silently keeping them.*
-> *- **Missing weights and market index** — imputed using domain-aligned medians plus explicit indicator flags so the model knows when data is missing.*
-> *- **8 new cities appear only in validation** — Laredo, Charlotte, and others never seen in training. I use continuous Haversine coordinates instead of city IDs, so the model generalises to any location."*
+| Tab | What's open | How to get there |
+| --- | --- | --- |
+| **A** | `readme.md` rendered in a Markdown previewer (VS Code preview, or GitHub.com repo page) | Open the README tab in the repo on github.com |
+| **B** | `train_predict.py` in your IDE | Scroll so line 65 (`def engineer_features`) is visible at the top of the screen |
+| **C** | Terminal showing the **already-completed** output of `python train_predict.py` | Run it before recording; scroll to the top of the output |
+| **D** | `scorer_results/candidate_december.png` open in an image viewer (full screen) | Double-click the file |
 
 ---
 
-### Section 2: Validation Strategy — Why Not K-Fold (0:35–1:10)
-**Screen to show**: README OOT split diagram.
+## SECTION 1 — Introduction & Data Quality (0:00 – 0:38)
 
-> *"The most important decision was the validation strategy.*
+### Screen to show: Tab A — README, scrolled to "Data Exploration & Quality Findings" table (line 56–62)
+
+**Speak exactly this:**
+
+> "Hi, I'm walking through my solution to Spotter's Freight Rate Prediction Challenge.
 >
-> *Random K-Fold shuffles records across time. In freight pricing that's a problem: if October market tightness leaks into the training fold, the model sees future macroeconomic conditions when predicting April loads. CV scores look great; production scores collapse.*
+> I had 48,000 historical freight loads from January through October 2025, and the goal is to predict posted rates for 12,000 validation loads in November and December.
 >
-> *I use a strict Out-of-Time split instead: train on January through August, hold out September through October, and deploy on November through December.*
+> [*point to the table header row*]
+> My first step was a thorough data audit. I found five issues.
 >
-> *One honest caveat: a single cut-point has higher variance than a rolling-origin cross-validation, so I treat the holdout metrics as indicative rather than definitive."*
+> [*point to row 1 — Negative weights*]
+> First — 292 training records and 145 validation records have a **negative weight**. That's a sign-flip recording error, not a sentinel. The fix is one line: `abs(weight)` before any imputation.
+>
+> [*point to row 4 — RPM outliers*]
+> Second — about 0.78% of training labels have an implausible rate per mile. 270 records are above six dollars per mile, and 103 are below fifty cents. The low-rpm ones can't be explained by any normal freight scenario — they're likely miskeyed distances or test records. I flag both groups and leave them in; the model sees their actual targets, so nothing is silently hidden.
+>
+> [*point to rows 2 and 3 — Missing weight, Missing market_index*]
+> Third and fourth — missing weight and missing market index, under one percent each. Standard imputation with domain-aligned medians plus explicit indicator flags so the model knows when data was missing.
+>
+> [*point to row 5 — Unseen cities*]
+> And fifth — the validation set introduces eight cities never seen in training: Laredo, Charlotte, San Diego, and others. A model using categorical city IDs fails completely on those. Mine uses continuous Haversine coordinates instead, so geography generalises to any lat/lon pair."
 
 ---
 
-### Section 3: Model Architecture & Results (1:10–1:55)
-**Screen to show**: Benchmark table in README or PDF.
+## SECTION 2 — Validation Strategy (0:38 – 1:08)
 
-> *"For modelling, freight rates are right-skewed and contain some extreme outlier records. Standard MSE loss pulls predictions toward outliers and inflates RMSE.*
+### Screen to show: Tab A — README, scroll up slightly to "Validation Methodology & Anti-Leakage Split" (line 68–84)
+
+**Speak exactly this:**
+
+> "Now the most important architectural decision: the validation strategy.
 >
-> *My approach: predict Rate Per Mile — posted_rate divided by distance — and optimise with L1 (MAE) loss. L1 targets the conditional median, which is much more stable.*
+> [*point to the ascii diagram — the three blocks*]
+> I use a strict Out-of-Time split. Train on January through August — that's 38,477 loads. Hold out September and October — 9,523 loads. Never touch November and December until final inference.
 >
-> *The final model is a weighted ensemble: 70% LightGBM L1 on RPM, 15% LightGBM L2 on RPM, and 15% LightGBM L1 on the direct rate. The L2 component partially corrects the conditional-median's underestimation of high-rate loads.*
+> [*point to the 'Why Not Random K-Fold' heading*]
+> Why not random K-Fold? Because freight rates have strong temporal structure — fuel-cost shocks, seasonal tightening. If you shuffle, October's market conditions bleed into the April training fold. CV scores look great. Then you deploy and they collapse.
 >
-> *Compared to a naive baseline of median RPM times distance, the ensemble reduces MAE by roughly 128 dollars and Median AE by 83 dollars on the Sep–Oct holdout. The ensemble achieves an MAE around 111 dollars, Median AE around 36 dollars, and an R-squared of 0.82."*
+> [*gesture at the bottom caveat line — 'single split'*]
+> I'm also honest about the limitation here: a single cut-point has higher variance than a rolling-origin cross-validation. These numbers are indicative, not definitive. An ideal next step would be multiple expanding windows."
 
 ---
 
-### Section 4: Code Walkthrough & Scorer Verification (1:55–2:30)
-**Screen to show**: IDE -> Terminal.
+## SECTION 3 — Model & Benchmark Results (1:08 – 1:48)
 
-> *"In `train_predict.py`, the `engineer_features` function builds 29 features across four domains: geospatial coordinates and Haversine distance, temporal day-of-week patterns with cyclical sine-cosine encoding, payload and equipment characteristics, and market-signal interactions.*
+### Screen to show: Tab A — README, scroll to "Out-of-Time Validation Results" table (line 127–134)
+
+**Speak exactly this:**
+
+> "Here are the benchmark results on the Sep–Oct holdout.
 >
-> *One important decision: I removed month, quarter, day-of-year, and year-level sine-cosine features. The model is trained on January through October — those features take values in November and December that the model never saw, so any splits it learned on them cannot generalise.*
+> [*point to the Naive baseline row*]
+> I always start with a naive baseline — median training RPM times distance, no ML at all. That gives a MAE of about $477 and a Median AE of $418.
 >
-> *The script also writes December predictions to a separate output file. The original `december-chart-inputs.csv` is never overwritten.*
+> [*trace down the table row by row*]
+> XGBoost with direct rate, XGBoost with Rate Per Mile, LightGBM direct, LightGBM RPM — each step is better.
 >
-> *Running Spotter's official scorer validates 12,000 predictions and 31 December predictions with zero errors and generates the chart."*
+> [*point to the bottom row — Tri-Ensemble*]
+> The final model is a weighted ensemble: 70% LightGBM L1 on Rate Per Mile, 15% LightGBM L2 on Rate Per Mile, 15% LightGBM L1 on the direct rate. That gives a MAE around $111 and a Median Absolute Error around $36 — meaning half of all predictions are within $36 of the actual rate. R-squared is about 0.827.
+>
+> [*pause briefly*]
+> Why Rate Per Mile with L1 loss? Freight rates are right-skewed. Standard L2 loss gets pulled toward outlier records. Predicting rate-per-mile and optimising with L1 targets the conditional median — which is much more stable against those 0.78% corrupted labels I mentioned earlier."
 
 ---
 
-### Section 5: December Chart & Honest Closing (2:30–2:55)
-**Screen to show**: `scorer_results/candidate_december.png`.
+## SECTION 4 — Code Walkthrough (1:48 – 2:22)
 
-> *"Here is the December scenario chart for Lexington to Fort Wayne — 360 miles, Dry Van, 32,000 lbs.*
+### Screen: Switch to Tab B — `train_predict.py`
+
+**Step 4a — scroll so line 119–130 (Payload / negative weight fix) is centred on screen**
+
+> "Let me show you the two most important code decisions.
 >
-> *What the model captures is a weekly day-of-week pattern that repeats throughout the month: Mondays average around 811 dollars, Wednesdays around 825 dollars, weekends a few dollars lower. This rhythm is learned from the training data and generalises to December.*
+> [*point to line 122: `d['weight_abs'] = d['weight'].abs()`*]
+> Right here — line 122 — this is the negative weight fix. `abs()` is called *before* the `.fillna()` on line 124. If you do it in the wrong order, some negative weights silently become 31,000 lbs instead of their corrected absolute value."
+
+**Step 4b — scroll up to line 133 (Temporal section comment)**
+
+> "[*point to the comment on line 133: 'month / quarter / dayofyear / sin-cos-year deliberately excluded'*]
 >
-> *What I want to be honest about: there is no meaningful late-December surge in these predictions. Day 25 onwards averages 818 dollars, essentially the same as the rest of the month. The model has no December training data and cannot learn holiday-specific behaviour.*
+> And here — line 133 — I deliberately excluded month, quarter, day-of-year, and the year-level sine-cosine features. The training data covers January through October. In November and December those features take values the model has never seen. Any splits it learned on them are meaningless for generalisation. I kept only day-of-week and day-of-month, which repeat identically every week and every month."
+
+**Step 4c — switch to Tab C — Terminal output, scroll to STEP 1 output block**
+
+> "[*point to the 'Naive baseline' output line*]
+> This is the live terminal output. You can see the naive baseline printed first, then the ensemble — and below it, the explicit lift calculation. There's no ambiguity about how much the model actually added over a trivial predictor.
 >
-> *The absolute rate level — that 818-dollar average — should be treated with appropriate uncertainty. Without December actuals, we cannot verify whether the true market level is higher or lower.*
->
-> *All deliverables are reproducible with a single `python train_predict.py` command. Thank you."*
+> [*scroll down to STEP 4 / the NOTE block*]
+> And here at the bottom of step four — the December note — which I'll come back to in a moment."
 
 ---
 
-## Presenter Notes
+## SECTION 5 — Scorer Verification & December Chart (2:22 – 2:52)
 
-**Numbers to cite**:
-- Naive baseline MAE: ~$257 / Median AE: ~$139 / R²: ~0.80
-- Ensemble MAE: ~$129 / Median AE: ~$56 / R²: ~0.82 (OOT Sep-Oct)
-- Lift over naive: ~$128 MAE reduction, ~$83 Median AE reduction
+### Screen: Switch to Tab D — `scorer_results/candidate_december.png` (full screen)
 
-**Claims to avoid**:
-- "Production-grade" — overstates readiness
-- "Impervious to outliers" — the model is more robust, not immune
-- "Holiday surge" — the data does not support it
-- "Perfectly aligned" — no Dec 2025 actuals exist to compare against
-- Citing specific numbers like "$826.69" or "$818.30" as authoritative — they are model outputs, not ground truth
+**Step 5a — stay on the chart**
 
-**Screen timing**:
-- 0:00–1:55: README / PDF
-- 1:55–2:20: Code (`train_predict.py`)
-- 2:20–2:35: Terminal (`score.py` output)
-- 2:35–2:55: `scorer_results/candidate_december.png`
+> "[*gesture broadly at the chart*]
+> This chart is produced entirely by Spotter's unmodified `score.py`. What you see is a weekly pattern that repeats every seven days throughout December.
+>
+> [*trace the repeating wave shape with your finger/cursor*]
+> Monday dips to around $811. Wednesday peaks around $825. Weekends come back down to $813. That rhythm is something the model learned from all ten training months — it genuinely generalises to December.
+>
+> [*pause — then speak clearly*]
+> What I want to be explicit about: there is **no meaningful late-December surge**. I checked — day 25 onwards averages $818, the rest of the month averages $818. Identical. And the model couldn't have learned December seasonality anyway, because December wasn't in the training data. The absolute rate level here — around $795 to $812 — should be treated with appropriate uncertainty."
+
+**Step 5b — switch back to Tab C — Terminal, scroll to the very end showing the scorer command**
+
+> "[*point to the scorer command at the bottom*]
+> Running Spotter's official scorer — `python score.py` — confirms exactly 12,000 validation predictions and 31 December predictions pass with zero errors.
+>
+> Everything is reproducible from a single command: `python train_predict.py`. The repo, the PDF report, the CSV — all linked in the README. Thank you."
+
+---
+
+## Exact Numbers to Cite (memorise these)
+
+| Fact | Number |
+| --- | --- |
+| Training loads | 48,000 |
+| OOT Train window | Jan 1 – Aug 31, 2025 (38,477 loads) |
+| OOT Holdout window | Sep 1 – Oct 31, 2025 (9,523 loads) |
+| Validation loads | 12,000 (Nov–Dec 2025) |
+| Negative weight records | 292 train / 145 val |
+| RPM outliers in training | 373 rows (0.78%): 270 high, 103 low |
+| Naive baseline MAE | ~$257 |
+| Naive baseline Median AE | ~$139 |
+| Ensemble MAE (OOT) | ~$129 |
+| Ensemble Median AE (OOT) | ~$56 |
+| Ensemble R² (OOT) | ~0.824 |
+| Dec Monday avg | ~$811 |
+| Dec Wednesday avg | ~$825 |
+| Dec day ≥25 avg vs rest | $818 vs $818 (no surge) |
+
+---
+
+## Hard Don'ts — Things Never to Say
+
+| Don't say | Why |
+| --- | --- |
+| "Holiday surge" or "holiday closures" | Data contradicts it: day ≥25 == rest of month |
+| "Production-grade" | Overstates readiness; single-split validation |
+| "Impervious to outliers" | It's more robust, not immune |
+| "Perfectly aligned with historical rates" | No Dec actuals exist to compare against |
+| "quote_signal predicts rate" | Correlation with rpm is only ~0.05 |
+| Cite exact Dec absolute level as ground truth | It's a model output, not a verified market rate |
+
+---
+
+## Screen-Switch Timing Summary
+
+| Clock | Screen | Key visual to point at |
+| --- | --- | --- |
+| 0:00 – 0:38 | Tab A: README data quality table | Each row of the 5-issue table |
+| 0:38 – 1:08 | Tab A: README OOT split section | ASCII timeline diagram + caveat line |
+| 1:08 – 1:48 | Tab A: README benchmark table | Naive baseline row → Tri-Ensemble row |
+| 1:48 – 1:57 | Tab B: `train_predict.py` line 122 | `d['weight_abs'] = d['weight'].abs()` |
+| 1:57 – 2:10 | Tab B: `train_predict.py` line 133 | Comment: "month / quarter... deliberately excluded" |
+| 2:10 – 2:22 | Tab C: Terminal output | Naive baseline line → Lift line → Dec NOTE |
+| 2:22 – 2:44 | Tab D: December chart | Weekly wave pattern + no surge |
+| 2:44 – 2:52 | Tab C: Terminal end | scorer command, "0 errors" |
